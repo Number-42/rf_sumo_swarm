@@ -2,7 +2,6 @@
 #include "RF24.h"
 #include "nRF24L01.h"
 
-
 unsigned long maxdis = 30;
 unsigned long ping;
 unsigned long time_now;
@@ -10,13 +9,14 @@ uint8_t master = '1';
 uint8_t slave = '2';
 byte switchCommand = 0;
 
-int rPin1 = 9;
-int rPin2 = 10;
+int CEPin = 9;
+int CSNPin = 10;
 
-RF24 radio(rPin1,rPin2);
+RF24 radio(CEPin,CSNPin);
 
 int radio_name = 1;
 byte radio_ping = 1;
+byte slave_ping = radio_ping+1;
 
 #define HERD_SIZE 5
 byte addresses[][6] = {"0Node","1Node","2Node","3Node","4Node"};
@@ -143,6 +143,7 @@ void setup() {
   radio.openReadingPipe(1,addresses[radio_name-1]);
   if(radio_name != HERD_SIZE-1) radio.openReadingPipe(2,addresses[radio_name+1]);
   radio.startListening();
+  if(radio_name != HERD_SIZE-1) radio.writeAckPayload(2,&slave_ping,1);
   listening = 1;
 }
 
@@ -171,41 +172,37 @@ void loop() {
       if(radio.available(&master)) {
         radio.read(&order, sizeof(char));
         command(order);
+        if(order == toggleMode) radio.writeAckPayload(2,&switchCommand,1);
       }
       if(radio.available(&slave)) {
         radio.read(&gotPing,1);
-        if(order == toggleMode) radio.writeAckPayload(2,&switchCommand,1);
-        else radio.writeAckPayload(2,&gotPing,1);
+        if(order != toggleMode) radio.writeAckPayload(2,&gotPing,1);
       }
     }
     else {
       unsigned long pingOld = ping;
       byte pingReceived;
-      if(listening) {
-        radio.stopListening();
-        listening = 0;
+      if(!listening && pinged) {
+        radio.startListening();
+        listening = 1;
       }
       if(!pinged) {
+        if(listening) {
+          radio.stopListening();
+          listening = 0;
+        }
         radio.write(&radio_ping,1);
         time_now = micros();
         pinged = 1;
+        radio.startListening();
+        listening = 1;
       }
-      radio.startListening();
-      listening = 1;
-      if(radio.available()) { 
+      if(radio.available()) {
         radio.read(&pingReceived,1);
         if(pingReceived == switchCommand) {
           command(toggleMode);
-          if(radio_name != HERD_SIZE-1) {
-            while(1) {
-              while(!radio.available(&slave));
-              radio.read(&pingReceived,1);
-              if(pingReceived == radio_ping+1) {
-                radio.writeAckPayload(2,&switchCommand,1);
-                break;
-              }
-            }
-          }
+          if(radio_name != HERD_SIZE-1) radio.writeAckPayload(2,&switchCommand,1);
+         }
         }
         else if(pingReceived == radio_ping) {
           ping = micros() - time_now;
@@ -215,7 +212,7 @@ void loop() {
             else command(forward);
           }
         }
-        else if(pingReceived == radio_ping+1) radio.writeAckPayload(2,&pingReceived,1);
+        if(pingReceived != switchCommand && radio_name != HERD_SIZE-1) radio.writeAckPayload(2,&slave_ping,1);
       }
     }
   }
