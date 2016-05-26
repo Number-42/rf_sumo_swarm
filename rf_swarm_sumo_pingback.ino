@@ -202,7 +202,6 @@ void loop() {
         if(pingReceived == switchCommand) {
           command(toggleMode);
           if(radio_name != HERD_SIZE-1) radio.writeAckPayload(2,&switchCommand,1);
-         }
         }
         else if(pingReceived == radio_ping) {
           ping = micros() - time_now;
