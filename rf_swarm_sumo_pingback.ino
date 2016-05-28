@@ -197,6 +197,7 @@ void loop() {
         radio.startListening();
         listening = 1;
       }
+      if(!radio.available() && pinged && micros()-time_now >= 1000000) pinged = 0;
       if(radio.available()) {
         radio.read(&pingReceived,1);
         if(pingReceived == switchCommand) {
